@@ -10,13 +10,13 @@ In your Gemfile:
 
 == Usage
 Imagine tree(-ish) structure:
-  # plants:
-  #   vegetables:
-  #     - cucumber
-  #     - tomato
-  #   fruits:
-  #     - apple
-  #     - banana
+  plants:
+    vegetables:
+      - cucumber
+      - tomato
+    fruits:
+      - apple
+      - banana
 
 In Ruby it'll look like this:
   class Node
@@ -42,14 +42,14 @@ In Ruby it'll look like this:
   fruits.children << apple << banana
 
 So, we have a simple tree with <code>root</code> element on the top of it.
-Now let's create a <tt>traversal description</tt>.
+Now let's create a <b>traversal description</b>.
   require 'traversal'
 
   traversal = Traversal::Description.new
   traversal.traverse(root).    # start from root node
             follow(:children)  # move forward via children relations
 
-It's a minimal traversal description. It has <tt>start node</tt> and <tt>relation</tt> pointer (<code>children</code>, in this case).
+It's a minimal traversal description. It has <b>start node</b> and <b>relation</b> pointer (<code>children</code>, in this case).
 Traversal description is <code>Enumerable</code> object. Let's examine our traverse:
   traversal.map { |n| n.name } # should be equal to [root, vegetables, cucumber, tomato, fruits, apple, banana]
 
@@ -59,7 +59,7 @@ Let's look closer:
 3. By default cursor moves deeper, to first child of <code>vegetables</code> node: <code>cucumber</code>
 4. <code>cucumber</code> has no children, traversal cursor moves to the next child of <code>vegetables</code>: <code>tomato</code>
 5. Traversal cursor moves to the next child of <code>root</code> - <code>fruits</code>
-6. Traversal cursor visits children of </code>fruits</code>: <code>apple</code> and <code>banana</code>
+6. Traversal cursor visits children of <code>fruits</code>: <code>apple</code> and <code>banana</code>
 7. All nodes are visited, cursor closed.
 
 If you want the cursor to visit all children before visiting grandchildren, then you have to declare <code>breadth_first</code> traversal visiting strategy:
