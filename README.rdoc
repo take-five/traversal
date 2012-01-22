@@ -1,0 +1,96 @@
+== Synopsys
+Simple traversal API for pure Ruby objects. Also it can be used it with ActiveRecord or DataMapper (or any other ORM).
+
+== Installation
+Install it via rubygems:
+  gem install traversal
+
+In your Gemfile:
+  gem 'traversal'
+
+== Usage
+Imagine tree(-ish) structure:
+  # plants:
+  #   vegetables:
+  #     - cucumber
+  #     - tomato
+  #   fruits:
+  #     - apple
+  #     - banana
+
+In Ruby it'll look like this:
+  class Node
+    attr_reader :name, :children
+
+    def initialize(name)
+      @name = name
+      @children = []
+    end
+  end
+
+  # lets recreate tree structure from above
+  root     = Node.new('plants')
+  veg      = Node.new('vegetables')
+  fruits   = Node.new('fruits')
+  cucumber = Node.new('cucumber')
+  tomato   = Node.new('tomato')
+  apple    = Node.new('apple')
+  banana   = Node.new('banana')
+
+  root.children << veg << fruits
+  veg.children << cucumber << tomato
+  fruits.children << apple << banana
+
+So, we have a simple tree with <code>root</code> element on the top of it.
+Now let's create a <tt>traversal description</tt>.
+  require 'traversal'
+
+  traversal = Traversal::Description.new
+  traversal.traverse(root).    # start from root node
+            follow(:children)  # move forward via children relations
+
+It's a minimal traversal description. It has <tt>start node</tt> and <tt>relation</tt> pointer (<code>children</code>, in this case).
+Traversal description is <code>Enumerable</code> object. Let's examine our traverse:
+  traversal.map { |n| n.name } # should be equal to [root, vegetables, cucumber, tomato, fruits, apple, banana]
+
+Let's look closer:
+1. We are starting from <code>root</code> node. It's first element.
+2. Traversal cursor moves to the first child of <code>root</code>: <code>vegetables</code>
+3. By default cursor moves deeper, to first child of <code>vegetables</code> node: <code>cucumber</code>
+4. <code>cucumber</code> has no children, traversal cursor moves to the next child of <code>vegetables</code>: <code>tomato</code>
+5. Traversal cursor moves to the next child of <code>root</code> - <code>fruits</code>
+6. Traversal cursor visits children of </code>fruits</code>: <code>apple</code> and <code>banana</code>
+7. All nodes are visited, cursor closed.
+
+If you want the cursor to visit all children before visiting grandchildren, then you have to declare <code>breadth_first</code> traversal visiting strategy:
+  traversal.breadth_first # in opposite of traversal.depth_first
+
+You can exclude nodes (but allow cursor to follow relations) from final result:
+  traversal.exclude { |node| node.children.length > 0 } # all nodes with children will be excluded from result
+
+You can prune away any node children (but leave the node in final result):
+  traversal.prune { |node| node.name == "vegetables" }.
+            map(&:name) # will produce [root, vegetables, fruits, apple, banana]
+
+Or, you can exclude node and prune away it's children:
+  traversal.prune_and_exclude { |node| node.name == "vegetables" }.
+            map(&:name) # will produce [root, fruits, apple, banana]
+
+Also, you can mark any node as "loop terminator":
+  traversal.stop_before { |node| node.name == "vegetables" }.to_a # will produce only [root]
+  traversal.stop_after { |node| node.name == "vegetables" }.to_a # will produce [root, vegetables]
+
+== Real world example
+  require "traversable"
+
+  class Page < ActiveRecord::Base
+    acts_as_tree
+    acts_as_traversable
+  end
+
+  lim = 15
+
+  Page.root.traverse(:children).
+            exclude(:root?).
+            exclude_and_prune(:is_deleted?).
+            stop_after { (lmt -= 1) == 0 }
