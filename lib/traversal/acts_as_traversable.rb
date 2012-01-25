@@ -31,8 +31,8 @@ module Traversal
       #   t = TreeNode.new
       #   t.traverse            # equivalent to Traversal::Description.new.traverse(t)
       #   t.traverse(:siblings) # equivalent to Traversal::Description.new.traverse(t).follow(:siblings)
-      def traverse(relation = nil)
-        Traversal::Description.new.traverse(self).tap { |desc| desc.follow(relation) if relation }
+      def traverse(*relations)
+        Traversal::Description.new.traverse(self).tap { |desc| desc.follow(*relations) unless relations.empty? }
       end
     end
   end

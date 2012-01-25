@@ -1,25 +1,49 @@
 # coding: utf-8
+
+require "forwardable"
+
 module Traversal
   # Traversal description
   class Description
+    class EmptyArgument; end
+
+    extend Forwardable
     include Enumerable
 
     DEPTH_FIRST = 0
     BREADTH_FIRST = 1
 
-    attr_reader :start_node, :relation
+    attr_reader :start_node, :relations
+    def_delegators :each, :[], :at, :empty?,
+                          :fetch, :find_index, :index,
+                          :last, :reverse, :values_at
 
     # Create blank traversal description
     def initialize
-      @exclude = []
-      @prune = []
-      @stop_before = []
-      @stop_after = []
+      @exclude        = []
+      @include_only   = []
 
-      @start_node = nil
-      @relation = nil
+      @prune          = []
+      @expand_only    = []
+      @stop_before    = []
+      @stop_after     = []
 
-      @order = DEPTH_FIRST
+      @start_node     = nil
+      @relations      = []
+
+      @order          = DEPTH_FIRST
+      @uniq           = true
+    end
+
+    # Tests equality of traversal descriptions
+    def ==(other)
+      return super unless other.is_a?(Description)
+
+      [:@start_node, :@relations, :@include_only,
+       :@exclude, :@prune, :@stop_before, :@uniq,
+       :@stop_after, :@order, :@expand_only].all? do |sym|
+        instance_variable_get(sym) == other.instance_variable_get(sym)
+      end
     end
 
     # Declare a traversal start point. From which node you want to follow relations?
@@ -35,14 +59,34 @@ module Traversal
     # == Example
     #   traversal.follow(:children)               # for each node will call node#children method
     #   traversal.follow { |node| node.children } # same effect
-    def follow(relation = nil, &blk)
-      tap { @relation = condition("Relation", relation, &blk) }
+    def follow(*relations, &blk)
+      raise ArgumentError, 'arguments or block expected' if relations.empty? && !block_given?
+
+      tap do
+        relations << blk if block_given?
+
+        relations.each do |relation|
+          @relations << condition(relation)
+        end
+        #@relations = condition(*relations, &blk)
+      end
     end
 
     # Declare exclude condition. Which nodes you want to
     # exclude (ignore them but not their relations) from your traversal?
-    def exclude(cond = nil, &blk)
-      tap { @exclude << condition("Exclude condition", cond, &blk) }
+    def exclude(*nodes, &blk)
+      tap { @exclude << condition(*nodes, &blk) }
+    end
+
+    # Declare inverted exclude condition. Which nodes you want to keep?
+    def include_only(*nodes, &blk)
+      tap { @include_only << condition(*nodes, &blk) }
+    end
+    alias exclude_unless include_only
+
+    # Declare which nodes you want to expand. Others will be pruned.
+    def expand_only(*nodes, &blk)
+      tap { @expand_only << condition(*nodes, &blk) }
     end
 
     # Declare prune condition. Which nodes relations you want to ignore?
@@ -50,28 +94,28 @@ module Traversal
     # Example:
     #   traversal.follow(:children).
     #   prune { |node| node.name == "A" } # node "A" will be included, but not its children
-    def prune(cond = nil, &blk)
-      tap { @prune << condition("Prune condition", cond, &blk) }
+    def prune(*nodes, &blk)
+      tap { @prune << condition(*nodes, &blk) }
     end
 
     # Declare exclude AND prune condition.
     # Matching node and its relations will be excluded from traversal.
-    def exclude_and_prune(cond = nil, &blk)
-      exclude(cond, &blk)
-      prune(cond, &blk)
+    def exclude_and_prune(*nodes, &blk)
+      exclude(*nodes, &blk)
+      prune(*nodes, &blk)
     end
     alias prune_and_exclude exclude_and_prune
 
     # Declare +stop pre-condition+.
     # When met, matched node will be excluded from traversal and iteration will be stopped.
-    def stop_before(cond = nil, &blk)
-      tap { @stop_before << condition("Stop condition", cond, &blk) }
+    def stop_before(*nodes, &blk)
+      tap { @stop_before << condition(*nodes, &blk) }
     end
 
     # Declare +stop post-condition+.
     # When met, matched node will be included in traversal and iteration will be stopped.
-    def stop_after(cond = nil, &blk)
-      tap { @stop_after << condition("Stop condition", cond, &blk) }
+    def stop_after(*nodes, &blk)
+      tap { @stop_after << condition(*nodes, &blk) }
     end
 
     # Declare traversal order strategy as +depth first+
@@ -84,7 +128,14 @@ module Traversal
       tap { @order = BREADTH_FIRST }
     end
 
-    def each
+    # Set uniqueness behaviour
+    # By default it is set to +true+
+    def uniq(v = true)
+      tap { @uniq = !!v }
+    end
+
+    # Iterate through nodes defined by DSL and optionally execute given +block+ for each node.
+    def each # :yields: node
       assert_complete_description
 
       iter = Traversal::Iterator.new(self)
@@ -105,29 +156,60 @@ module Traversal
       (type == :after ? @stop_after : @stop_before).any? { |cond| cond[node] }
     end
 
+    def include?(node) #:nodoc:
+      @include_only.all? { |cond| cond[node] } &&
+      @exclude.none? { |cond| cond[node] }
+    end
+
     def exclude?(node) #:nodoc:
-      @exclude.any? { |cond| cond[node] }
+      !include?(node)
+    end
+
+    def expand?(node) #:nodoc:
+      @expand_only.all? { |cond| cond[node] } &&
+      @prune.none? { |cond| cond[node] }
     end
 
     def prune?(node) #:nodoc:
-      @prune.any? { |cond| cond[node] }
+      !expand?(node)
     end
 
     def breadth_first? #:nodoc:
       @order == BREADTH_FIRST
     end
 
-    private
-    def condition(name, arg, &blk) #:nodoc:
-      raise TypeError, "#{name} must be Symbol, Method, Proc or block" unless
-          (arg ||= blk).respond_to?(:to_proc)
+    def uniq? #:nodoc:
+      @uniq
+    end
 
-      arg.to_proc
+    private
+    def condition(*args, &blk) #:nodoc:
+      # on empty argument use given block
+      args << blk if block_given?
+      raise ArgumentError, 'arguments or block expected' if args.empty?
+
+      args.length == 1 ? arg_to_proc(args.first) : args_to_proc(args)
     end
 
     def assert_complete_description #:nodoc:
       raise IncompleteDescription, "Traversal description should contain start node. Use #traverse method" unless @start_node
-      raise IncompleteDescription, "Traversal description should contain relation. Use #follow method" unless @relation
+      raise IncompleteDescription, "Traversal description should contain relation(s). Use #follow method" if @relations.empty?
+    end
+
+    def args_to_proc(args)
+      procs = args.map { |arg| arg_to_proc(arg) }
+      proc { |node| procs.any? { |pr| pr[node] } }
+    end
+
+    # convert argument to callable proc
+    def arg_to_proc(arg) #:nodoc:
+      return arg.to_proc if arg.respond_to?(:to_proc)
+
+      [:===, :==, :eql?].each do |meth|
+        return arg.method(meth) if arg.respond_to?(meth)
+      end
+
+      raise TypeError, 'argument must respond to one of the following method: #to_proc, #===, #==, #eql?'
     end
   end
 end

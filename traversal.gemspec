@@ -9,7 +9,7 @@ Gem::Specification.new do |s|
   s.email       = ["amikhailov83@gmail.com"]
   s.homepage    = "https://github.com/take-five/traversal"
   s.summary     = %q{Simple traversal API for pure Ruby objects}
-  s.date        = "2012-01-22"
+  s.date        = "2012-01-26"
 
   s.rubyforge_project = "traversal"
 

@@ -69,7 +69,15 @@ You can exclude nodes (but allow cursor to follow relations) from final result:
   traversal.exclude { |node| node.children.length > 0 } # all nodes with children will be excluded from result
 
 You can prune away any node children (but leave the node in final result):
-  traversal.prune { |node| node.name == "vegetables" }.
+  traversal.prune(vegetables).
+            map(&:name) # will produce [root, vegetables, fruits, apple, banana]
+
+You can +include_only+ certain nodes (aliased as +exclude_unless+, an opposite of +exclude+):
+  traversal.include_only(vegetables).
+            map(&:name) # will produce [vegetables]
+
+Also you can +expand_only+ certain nodes (aliased as +prune_unless+, an opposite of +exclude+):
+  traversal.expand_only(root, fruits). # this conditions will be ORed
             map(&:name) # will produce [root, vegetables, fruits, apple, banana]
 
 Or, you can exclude node and prune away it's children:
@@ -77,8 +85,8 @@ Or, you can exclude node and prune away it's children:
             map(&:name) # will produce [root, fruits, apple, banana]
 
 Also, you can mark any node as "loop terminator":
-  traversal.stop_before { |node| node.name == "vegetables" }.to_a # will produce only [root]
-  traversal.stop_after { |node| node.name == "vegetables" }.to_a # will produce [root, vegetables]
+  traversal.stop_before(vegetables).to_a # will produce only [root]
+  traversal.stop_after(vegetables).to_a # will produce [root, vegetables]
 
 == Real world example
   require "traversable"
@@ -94,3 +102,11 @@ Also, you can mark any node as "loop terminator":
             exclude(:root?).
             exclude_and_prune(:is_deleted?).
             stop_after { (lmt -= 1) == 0 }
+
+
+  leaf = Page.last # not root node
+
+  # traverse through ancestors, exclude last ancestor and its children
+  leaf.traverse(:parent).
+       exclude(:root?).
+       exclude { |node| node.member_of?(root.children) }

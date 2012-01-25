@@ -1,10 +1,17 @@
 # coding: utf-8
 
 require "enumerator"
+require "forwardable"
 
 module Traversal
   # Traversal iterator.
-  class Iterator < Enumerator
+  class Iterator < Enumerator #:nodoc: all
+    extend Forwardable
+
+    def_delegators :to_ary!, :[], :at, :empty?,
+                             :fetch, :find_index, :index,
+                             :last, :reverse, :values_at
+
     # Create new traversal iterator from traversal description
     def initialize(description)
       raise TypeError,
@@ -14,23 +21,33 @@ module Traversal
       @description = description
       start_node = @description.start_node
 
-      # Create Enumerator
-      super() do |yielder|
+      # Map of visited nodes
+      @visited = {}
+
+      # Create underlying Enumerator
+      @enumerator = Enumerator.new do |yielder|
         @yielder = yielder
 
         begin
           yield_node(start_node)
 
-          expand_node(start_node)
+          expand_node(start_node) if @description.expand?(start_node)
         rescue StopIteration
           # ignore
         end
       end
+
+      # Wrap underlying enumerator
+      super() do |y|
+        @enumerator.each { |e| y << e }
+      end
     end
 
     private
-    def push(*args) #:nodoc:
-      @yielder.yield(*args)
+    def push(node) #:nodoc:
+      @visited[node] = true if @description.uniq? # memo visited node
+
+      @yielder.yield(node)
     end
 
     def yield_node(node) #:nodoc:
@@ -38,7 +55,7 @@ module Traversal
       raise StopIteration if @description.stop?(node, :before)
 
       # do yield
-      push(node) unless @description.exclude?(node)
+      push(node) unless @description.exclude?(node) || visited?(node)
 
       # check stop post-condition
       raise StopIteration if @description.stop?(node, :after)
@@ -82,9 +99,28 @@ module Traversal
 
     # Expand relations for node
     def relations_for(node) #:nodoc:
-      relation = @description.relation[node]
+      Enumerator.new do |yielder|
+        @description.relations.each do |relation_accessor|
+          begin
+            relations  = relation_accessor[node]
+            enumerable = relations.is_a?(Enumerable) ? relations : [relations].compact
 
-      relation.is_a?(Enumerable) ? relation : []
+            enumerable.each { |e| yielder << e unless visited?(e) }
+          rescue NoMethodError
+            # ignore errors on relation_accessor[node]
+          end
+        end
+      end
     end
-  end
-end
+
+    def visited?(node) #:nodoc:
+      @description.uniq? && @visited.key?(node)
+    end
+
+    # convert underlying enumerator to array
+    def to_ary! #:nodoc:
+      @enumerator = @enumerator.to_a unless @enumerator.is_a?(Array)
+      @enumerator
+    end
+  end # module Iterator
+end # module Traversal
