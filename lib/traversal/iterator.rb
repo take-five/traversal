@@ -31,7 +31,7 @@ module Traversal
         begin
           yield_node(start_node)
 
-          expand_node(start_node) if @description.expand?(start_node)
+          expand_node(start_node) if @description.expand_node?(start_node)
         rescue StopIteration
           # ignore
         end
@@ -55,7 +55,7 @@ module Traversal
       raise StopIteration if @description.stop?(node, :before)
 
       # do yield
-      push(node) unless @description.exclude?(node) || visited?(node)
+      push(node) unless @description.exclude_node?(node) || visited?(node)
 
       # check stop post-condition
       raise StopIteration if @description.stop?(node, :after)
@@ -75,7 +75,7 @@ module Traversal
       relations_for(node).each do |rel|
         yield_node(rel)
 
-        expand_node(rel) unless @description.prune?(rel)
+        expand_node(rel) unless @description.prune_node?(rel)
       end
     end
 
@@ -88,7 +88,7 @@ module Traversal
         yield_node(rel)
 
         # memoize relation for next iteration
-        cached_relations << rel unless @description.prune?(rel)
+        cached_relations << rel unless @description.prune_node?(rel)
       end
 
       # 2. dig deeper

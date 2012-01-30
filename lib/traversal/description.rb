@@ -156,22 +156,22 @@ module Traversal
       (type == :after ? @stop_after : @stop_before).any? { |cond| cond[node] }
     end
 
-    def include?(node) #:nodoc:
+    def include_node?(node) #:nodoc:
       @include_only.all? { |cond| cond[node] } &&
       @exclude.none? { |cond| cond[node] }
     end
 
-    def exclude?(node) #:nodoc:
-      !include?(node)
+    def exclude_node?(node) #:nodoc:
+      !include_node?(node)
     end
 
-    def expand?(node) #:nodoc:
+    def expand_node?(node) #:nodoc:
       @expand_only.all? { |cond| cond[node] } &&
       @prune.none? { |cond| cond[node] }
     end
 
-    def prune?(node) #:nodoc:
-      !expand?(node)
+    def prune_node?(node) #:nodoc:
+      !expand_node?(node)
     end
 
     def breadth_first? #:nodoc:
